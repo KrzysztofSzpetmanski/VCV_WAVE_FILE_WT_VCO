@@ -2,7 +2,7 @@
 
 VCV Rack 2 plugin: VCO wavetable, w którym źródłem WT jest zwykły plik WAV (nie plik wavetable).
 
-## Draft v0.1 - co działa
+## Draft v2.0 - co działa
 
 - Ładowanie WAV z menu kontekstowego modułu (`Right click -> Load WAV...`).
 - Wczytywane jest maksymalnie pierwsze `5.0s` pliku.

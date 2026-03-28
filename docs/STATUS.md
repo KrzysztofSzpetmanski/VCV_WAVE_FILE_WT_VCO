@@ -3,7 +3,7 @@
 ## Data
 - Date: 2026-03-28
 - Branch: `main`
-- Version: `0.1.0` (draft)
+- Version: `2.0.0` (draft)
 
 ## Zrobione
 - Skopiowany i uruchomiony szkielet modułu z poprzedniego projektu.
