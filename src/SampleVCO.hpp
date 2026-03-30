@@ -15,7 +15,8 @@ struct SampleVCO : Module {
 	static constexpr int kMaxWavetableSize = WavetableEngine::kMaxWavetableSize;
 	static constexpr int kGeneratedWavetableSize = WavetableEngine::kGeneratedWavetableSize;
 	static constexpr int kMorphWaveCount = WavetableEngine::kMorphWaveCount;
-	static constexpr int kBuildNumber = 101;
+	static constexpr int kBuildNumber = 102;
+	static constexpr int kWalkStepSamples = 512;
 	static constexpr float kTableTransitionTimeSec = 0.02f;
 	static constexpr float kControlUpdateIntervalSec = 0.01f;
 	static constexpr int kMaxVoices = 10;
@@ -28,6 +29,8 @@ struct SampleVCO : Module {
 		SCAN_PARAM,
 		WT_SIZE_PARAM,
 		MORPH_PARAM,
+		WALK_TIME_PARAM,
+		WALK_BUTTON_PARAM,
 		ENV_PARAM,
 		RVB_TIME_PARAM,
 		RVB_FB_PARAM,
@@ -35,6 +38,7 @@ struct SampleVCO : Module {
 
 		MORPH_CV_DEPTH_PARAM,
 		WT_SIZE_CV_DEPTH_PARAM,
+		WALK_TIME_CV_DEPTH_PARAM,
 		NUM_PARAMS
 	};
 	enum InputIds {
@@ -42,6 +46,7 @@ struct SampleVCO : Module {
 		TRIG_INPUT,
 		MORPH_CV_INPUT,
 		WT_SIZE_CV_INPUT,
+		WALK_TIME_CV_INPUT,
 		NUM_INPUTS
 	};
 	enum OutputIds {
@@ -50,6 +55,7 @@ struct SampleVCO : Module {
 		NUM_OUTPUTS
 	};
 	enum LightIds {
+		WALK_LIGHT,
 		MORPH_MOD_LIGHT,
 		WT_SIZE_MOD_LIGHT,
 		NUM_LIGHTS
@@ -81,19 +87,24 @@ struct SampleVCO : Module {
 private:
 	float computeScanParam();
 	float computeMorphParam();
+	float computeWalkTimeParam();
 	int computeWavetableSize();
 	float computeEnvParam();
 	float processEnvEnvelope(float trigVoltage, bool trigPatched, float env, float sampleTime);
+	void stepWalkScan();
 	void updateTablesIfNeeded();
 	static float sanitizeAudioOut(float v);
 
 	dsp::SchmittTrigger contourTrigger;
+	dsp::SchmittTrigger walkButtonTrigger;
 	std::array<float, kMaxVoices> phase {};
 	float controlUpdateTimer = 0.f;
 	float contourEnvelope = 1.f;
 	float previousSampleRate = 0.f;
 	float scanSmoothed = 0.f;
 	bool scanSmootherInit = false;
+	float walkElapsedSec = 0.f;
+	bool walkEnabled = false;
 
 	WavetableEngine wavetableEngine;
 	reverb_stage::ReverbStage reverbStage;

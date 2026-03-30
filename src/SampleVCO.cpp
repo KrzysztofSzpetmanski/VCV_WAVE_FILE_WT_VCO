@@ -52,6 +52,7 @@ SampleVCO::SampleVCO() {
 	configInput(TRIG_INPUT, "Trigger");
 	configInput(MORPH_CV_INPUT, "Morph CV");
 	configInput(WT_SIZE_CV_INPUT, "WT Size CV");
+	configInput(WALK_TIME_CV_INPUT, "Walk Time CV");
 
 	configOutput(LEFT_OUTPUT, "Left");
 	configOutput(RIGHT_OUTPUT, "Right");
@@ -70,6 +71,8 @@ SampleVCO::SampleVCO() {
 	                            "WT size");
 	wtSizeQ->snapEnabled = true;
 	configParam(MORPH_PARAM, 0.f, 1.f, 0.f, "Morph");
+	configParam(WALK_TIME_PARAM, 1.f, 10.f, 2.f, "Walk time", " s");
+	configButton(WALK_BUTTON_PARAM, "Walk");
 	configParam(ENV_PARAM, 0.f, 1.f, 1.f, "Envelope");
 	configParam<ReverbTimeSecondsQuantity>(RVB_TIME_PARAM, 0.f, 1.f, 0.4f, "Reverb time");
 	configParam(RVB_FB_PARAM, 0.f, 1.f, 0.45f, "Reverb feedback");
@@ -77,6 +80,7 @@ SampleVCO::SampleVCO() {
 
 	configParam(MORPH_CV_DEPTH_PARAM, 0.f, 1.f, 1.f, "Morph CV depth", "%", 0.f, 100.f);
 	configParam(WT_SIZE_CV_DEPTH_PARAM, 0.f, 1.f, 1.f, "WT Size CV depth", "%", 0.f, 100.f);
+	configParam(WALK_TIME_CV_DEPTH_PARAM, 0.f, 1.f, 1.f, "Walk Time CV depth", "%", 0.f, 100.f);
 
 	wavetableEngine.init(
 		computeWavetableSize(),
@@ -112,6 +116,14 @@ float SampleVCO::computeScanParam() {
 
 float SampleVCO::computeMorphParam() {
 	return getModulatedKnobValue(params[MORPH_PARAM].getValue(), MORPH_CV_INPUT, MORPH_CV_DEPTH_PARAM, 0.f, 1.f);
+}
+
+float SampleVCO::computeWalkTimeParam() {
+	return getModulatedKnobValue(params[WALK_TIME_PARAM].getValue(),
+	                             WALK_TIME_CV_INPUT,
+	                             WALK_TIME_CV_DEPTH_PARAM,
+	                             1.f,
+	                             10.f);
 }
 
 int SampleVCO::computeWavetableSize() {
@@ -290,6 +302,9 @@ void SampleVCO::onReset() {
 	wavetableEngine.setMorphNorm(computeMorphParam());
 	scanSmoothed = clamp(computeScanParam(), 0.f, 1.f);
 	scanSmootherInit = true;
+	walkEnabled = false;
+	walkElapsedSec = 0.f;
+	params[WALK_BUTTON_PARAM].setValue(0.f);
 	controlUpdateTimer = 0.f;
 	contourEnvelope = 1.f;
 	float sr = previousSampleRate > 1.f ? previousSampleRate : 48000.f;
@@ -304,6 +319,7 @@ json_t* SampleVCO::dataToJson() {
 			json_object_set_new(rootJ, "sourcePath", json_string(sourcePath.c_str()));
 		}
 	}
+	json_object_set_new(rootJ, "walkEnabled", json_boolean(walkEnabled));
 	return rootJ;
 }
 
@@ -312,6 +328,10 @@ void SampleVCO::dataFromJson(json_t* rootJ) {
 	if (json_is_string(sourcePathJ)) {
 		loadSourceWavPath(json_string_value(sourcePathJ));
 	}
+	json_t* walkEnabledJ = json_object_get(rootJ, "walkEnabled");
+	if (json_is_boolean(walkEnabledJ)) {
+		walkEnabled = json_boolean_value(walkEnabledJ);
+	}
 	wavetableEngine.forceRebuild(
 		computeWavetableSize(),
 		clamp(computeScanParam(), 0.f, 1.f)
@@ -319,12 +339,48 @@ void SampleVCO::dataFromJson(json_t* rootJ) {
 	wavetableEngine.setMorphNorm(computeMorphParam());
 	scanSmoothed = clamp(computeScanParam(), 0.f, 1.f);
 	scanSmootherInit = true;
+	walkElapsedSec = 0.f;
+	params[WALK_BUTTON_PARAM].setValue(0.f);
+}
+
+void SampleVCO::stepWalkScan() {
+	if (!hasLoadedSource()) {
+		return;
+	}
+	auto sourcePtr = std::atomic_load_explicit(&sourceMonoUi, std::memory_order_acquire);
+	if (!sourcePtr || sourcePtr->size() < 2) {
+		return;
+	}
+
+	const int srcSize = static_cast<int>(sourcePtr->size());
+	const int rawSpanFrames = std::min(srcSize, kMorphWaveCount * kGeneratedWavetableSize);
+	const int maxStart = std::max(0, srcSize - rawSpanFrames);
+	if (maxStart <= 0) {
+		return;
+	}
+
+	int start = static_cast<int>(std::lround(clamp(params[SCAN_PARAM].getValue(), 0.f, 1.f) *
+	                                        static_cast<float>(maxStart)));
+	start = clamp(start, 0, maxStart);
+	const int span = maxStart + 1;
+	int nextStart = (start + kWalkStepSamples) % span;
+	float nextScan = static_cast<float>(nextStart) / static_cast<float>(maxStart);
+	params[SCAN_PARAM].setValue(clamp(nextScan, 0.f, 1.f));
 }
 
 void SampleVCO::updateTablesIfNeeded() {
 	if (sourcePendingDirty.exchange(false, std::memory_order_relaxed)) {
 		auto pending = std::atomic_load_explicit(&sourceMonoPending, std::memory_order_acquire);
 		wavetableEngine.setSource(pending);
+	}
+
+	if (walkEnabled && hasLoadedSource()) {
+		walkElapsedSec += kControlUpdateIntervalSec;
+		float walkPeriod = computeWalkTimeParam();
+		while (walkElapsedSec >= walkPeriod) {
+			walkElapsedSec -= walkPeriod;
+			stepWalkScan();
+		}
 	}
 
 	float scanTarget = clamp(computeScanParam(), 0.f, 1.f);
@@ -345,6 +401,13 @@ void SampleVCO::updateTablesIfNeeded() {
 }
 
 void SampleVCO::process(const ProcessArgs& args) {
+	if (walkButtonTrigger.process(params[WALK_BUTTON_PARAM].getValue())) {
+		walkEnabled = !walkEnabled;
+		if (!walkEnabled) {
+			walkElapsedSec = 0.f;
+		}
+	}
+
 	if (std::abs(args.sampleRate - previousSampleRate) > 1.f) {
 		previousSampleRate = args.sampleRate;
 		reverbStage.reset(args.sampleRate);
@@ -418,6 +481,7 @@ void SampleVCO::process(const ProcessArgs& args) {
 
 	float morphMod = inputs[MORPH_CV_INPUT].isConnected() ? params[MORPH_CV_DEPTH_PARAM].getValue() : 0.f;
 	float sizeMod = inputs[WT_SIZE_CV_INPUT].isConnected() ? params[WT_SIZE_CV_DEPTH_PARAM].getValue() : 0.f;
+	lights[WALK_LIGHT].setBrightnessSmooth(walkEnabled ? 1.f : 0.f, args.sampleTime * 12.f);
 	lights[MORPH_MOD_LIGHT].setBrightnessSmooth(morphMod, args.sampleTime * 12.f);
 	lights[WT_SIZE_MOD_LIGHT].setBrightnessSmooth(sizeMod, args.sampleTime * 12.f);
 }

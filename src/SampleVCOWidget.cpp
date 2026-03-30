@@ -370,6 +370,15 @@ struct SampleVCOWidget : ModuleWidget {
 		sizeKnob->cvInput = SampleVCO::WT_SIZE_CV_INPUT;
 		sizeKnob->depthMenuLabel = "WT SIZE CV depth";
 		addParam(sizeKnob);
+		addParam(createParamCentered<TL1105>(mm2px(Vec(38.0f, 69.0f)), module, SampleVCO::WALK_BUTTON_PARAM));
+		addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(45.0f, 69.0f)), module, SampleVCO::WALK_LIGHT));
+
+		auto* walkTimeKnob = createParamCentered<CvDepthKnob>(mm2px(Vec(52.0f, 69.0f)), module, SampleVCO::WALK_TIME_PARAM);
+		walkTimeKnob->moduleRef = module;
+		walkTimeKnob->depthParam = SampleVCO::WALK_TIME_CV_DEPTH_PARAM;
+		walkTimeKnob->cvInput = SampleVCO::WALK_TIME_CV_INPUT;
+		walkTimeKnob->depthMenuLabel = "WALK TIME CV depth";
+		addParam(walkTimeKnob);
 
 		addParam(createParamCentered<RoundSmallBlackKnob>(mm2px(Vec(10.0f, 85.0f)), module, SampleVCO::ENV_PARAM));
 		addParam(createParamCentered<RoundSmallBlackKnob>(mm2px(Vec(24.0f, 85.0f)), module, SampleVCO::RVB_TIME_PARAM));
@@ -378,6 +387,7 @@ struct SampleVCOWidget : ModuleWidget {
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.0f, 101.0f)), module, SampleVCO::WT_SIZE_CV_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(24.0f, 101.0f)), module, SampleVCO::MORPH_CV_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(38.0f, 101.0f)), module, SampleVCO::WALK_TIME_CV_INPUT));
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.0f, 117.0f)), module, SampleVCO::VOCT_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(24.0f, 117.0f)), module, SampleVCO::TRIG_INPUT));
@@ -403,6 +413,8 @@ struct SampleVCOWidget : ModuleWidget {
 
 		addPanelLabel(10.0f, 63.0f, "SCAN", 8);
 		addPanelLabel(24.0f, 63.0f, "WTSIZE", 8);
+		addPanelLabel(38.0f, 63.0f, "WALK", 8);
+		addPanelLabel(52.0f, 63.0f, "TIME", 8);
 		addPanelLabel(10.0f, 79.0f, "ENV", 8);
 
 		addPanelLabel(24.0f, 79.0f, "RVB TM", 8);
@@ -411,6 +423,7 @@ struct SampleVCOWidget : ModuleWidget {
 
 		addPanelLabel(10.0f, 95.0f, "WT CV", 7);
 		addPanelLabel(24.0f, 95.0f, "MORPH CV", 7);
+		addPanelLabel(38.0f, 95.0f, "TIME CV", 7);
 
 		addPanelLabel(10.0f, 111.0f, "VOCT", 7);
 		addPanelLabel(24.0f, 111.0f, "TRIG", 7);
